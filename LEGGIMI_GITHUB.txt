@@ -1,0 +1,21 @@
+BAIA RUMBLE 2026 – SITO UNICO
+
+CARICAMENTO SU GITHUB
+1. Estrai questo pacchetto.
+2. Nel repository GitHub elimina l'eventuale file admin.html precedente.
+3. Carica tutti i file contenuti nella cartella, compreso index.html.
+4. Conferma con Commit changes.
+5. Il sito avrà un solo indirizzo, quello principale di GitHub Pages.
+
+FUNZIONAMENTO
+- Tutti aprono lo stesso sito.
+- Senza login il sito è pubblico e in sola lettura.
+- Il pulsante Login riconosce automaticamente amministratore e capitani.
+- Solo l'amministratore può modificare rose, capitani, calendario, risultati e live.
+- Quando un giocatore viene indicato come capitano viene creato automaticamente il suo profilo di voto.
+- Ogni squadra può avere un solo capitano.
+- I capitani possono votare tre giocatori diversi, esclusi quelli della propria squadra.
+- L'esito della votazione è visibile esclusivamente all'amministratore.
+
+SINCRONIZZAZIONE
+Per condividere in tempo reale modifiche e risultati tra dispositivi diversi è necessario configurare Firebase nel file config.js. Senza Firebase i dati restano salvati soltanto nel browser utilizzato.

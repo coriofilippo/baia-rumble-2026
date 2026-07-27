@@ -1,7 +1,7 @@
 {
   "name": "Beach Water polo Cup - Baia Rumble 2026",
   "short_name": "Baia Rumble",
-  "start_url": "./index.html",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#edf4f8",
   "theme_color": "#064f8e",

@@ -2,13 +2,13 @@
 (() => {
 'use strict';
 
-const MODE = window.BAIA_MODE === 'admin' ? 'admin' : 'viewer';
 const firebaseConfig = window.BAIA_FIREBASE_CONFIG || {};
 const $ = id => document.getElementById(id);
 const STORAGE_KEY = 'baia_rumble_2026_shared_v2';
 const ADMIN_SESSION = 'baia_rumble_admin_session';
 const CAPTAIN_SESSION = 'baia_rumble_captain_team';
-const DEFAULT_ADMIN_HASH = '158a323a7ba44870f23d96f1516dd70aa48e9a72db4ebb026b0a89e212a208ab';
+const ADMIN_USERNAME_HASH = '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918';
+const ADMIN_PASSWORD_HASH = '399f4a081408a3f6ab8b1ad8b2a32b873ceae0cb141d08ee2dd0269cbb4109cf';
 const DEFAULT_CAPTAIN_HASH = '5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5';
 
 function safeStorageGet(storageName,key) {
@@ -25,11 +25,12 @@ let data = initialData();
 let cloud = null;
 let unsubscribe = null;
 let installPrompt = null;
-let isAdmin = MODE === 'admin' && safeStorageGet('sessionStorage',ADMIN_SESSION) === '1';
+let isAdmin = safeStorageGet('sessionStorage',ADMIN_SESSION) === '1';
 let captainTeamId = safeStorageGet('sessionStorage',CAPTAIN_SESSION) || null;
 let currentLiveMatch = null;
 let currentEventId = null;
 let saveTimer = null;
+if(isAdmin&&captainTeamId){captainTeamId=null;safeStorageRemove('sessionStorage',CAPTAIN_SESSION);}
 
 function initialData() {
   const teams = [
@@ -72,12 +73,11 @@ function initialData() {
   ];
 
   return {
-    version:7,
+    version:8,
     settings:{
       name:'Beach Water polo Cup - Baia Rumble 2026',
       code:'BAIARUMBLE2026',
       pointsWin:3,pointsDraw:1,pointsLoss:0,
-      adminPinHash:DEFAULT_ADMIN_HASH,
       captainPasswordHash:DEFAULT_CAPTAIN_HASH,
       votingClosed:false
     },
@@ -117,7 +117,6 @@ function normalize() {
     else if(value)data.votes[teamId]=[value];
     else data.votes[teamId]=[];
   });
-  data.settings.adminPinHash ||= DEFAULT_ADMIN_HASH;
   data.settings.captainPasswordHash ||= DEFAULT_CAPTAIN_HASH;
   data.settings.votingClosed = Boolean(data.settings.votingClosed);
   data.teams.forEach(t => {
@@ -215,7 +214,7 @@ function setSync(text, ok=false) {
 }
 async function initCloud() {
   if (!firebaseConfig.apiKey) {
-    setSync(MODE === 'admin' ? 'Modalità locale · cloud non configurato' : 'Anteprima locale · dati non sincronizzati');
+    setSync('Modalità locale · cloud non configurato');
     return;
   }
   try {
@@ -239,7 +238,7 @@ function subscribeCloud() {
       data = snap.data();
       normalize();seedFinals();saveLocal();render();
       setSync('Aggiornamento in tempo reale · '+code,true);
-    } else if (MODE === 'admin' && isAdmin) {
+    } else if (isAdmin) {
       saveAll(true);
     } else {
       setSync('Torneo non ancora pubblicato');
@@ -256,7 +255,7 @@ function saveCaptainVote() {
 }
 
 function saveAll(immediate=false) {
-  if (MODE !== 'admin' || !isAdmin) return;
+  if (!isAdmin) return;
   normalize();seedFinals();saveLocal();render();
   if (!cloud) return;
   clearTimeout(saveTimer);
@@ -318,35 +317,67 @@ document.querySelectorAll('.modal').forEach(m => m.addEventListener('click',e =>
   if (e.target === m) closeModal(m.id);
 }));
 
+function activatePanel(panelId) {
+  const button=document.querySelector(`.tab[data-panel="${panelId}"]`);
+  const panel=$(panelId);
+  if(!button||!panel)return;
+  document.querySelectorAll('.tab,.panel').forEach(x=>x.classList.remove('on'));
+  button.classList.add('on');panel.classList.add('on');
+}
 function updateAccessUI() {
-  const enabled = MODE === 'admin' && isAdmin;
-  document.body.classList.toggle('admin-enabled',enabled);
-  $('accessLabel').innerHTML = MODE === 'viewer'
-    ? '<b>Accesso visitatori · sola lettura</b>'
-    : enabled ? '<b>Accesso amministratore attivo</b>' : '<b>Area amministratore bloccata</b>';
-  $('loginBtn').style.display = MODE === 'admin' && !isAdmin ? 'inline-flex' : 'none';
-  $('logoutBtn').style.display = MODE === 'admin' && isAdmin ? 'inline-flex' : 'none';
+  const captain=captainLoginState();
+  document.body.classList.toggle('admin-enabled',isAdmin);
+  document.body.classList.toggle('captain-enabled',Boolean(captain));
+  if(isAdmin){
+    $('accessLabel').innerHTML='<b>Amministratore connesso</b>';
+  }else if(captain){
+    $('accessLabel').innerHTML=`<b>${esc(playerFullName(captain.captain))}</b><br><span class="small">Capitano · ${esc(captain.team.name)}</span>`;
+  }else{
+    $('accessLabel').innerHTML='<b>Accesso pubblico</b>';
+  }
+  $('loginBtn').style.display = !isAdmin&&!captain ? 'inline-flex' : 'none';
+  $('logoutBtn').style.display = isAdmin||captain ? 'inline-flex' : 'none';
 }
 $('loginBtn').addEventListener('click',() => {
-  $('pinInput').value='';$('loginError').textContent='';
-  showModal('loginModal');setTimeout(()=>$('pinInput').focus(),100);
+  $('loginUsername').value='';$('loginPassword').value='';$('loginError').textContent='';
+  showModal('loginModal');setTimeout(()=>$('loginUsername').focus(),100);
 });
 $('confirmLogin').addEventListener('click',async() => {
-  if (await sha256($('pinInput').value) === data.settings.adminPinHash) {
-    isAdmin=true;safeStorageSet('sessionStorage',ADMIN_SESSION,'1');
-    closeModal('loginModal');updateAccessUI();render();
-    if (cloud) subscribeCloud();
-  } else {
-    $('loginError').textContent='PIN non corretto.';
+  const username=normalizeLogin($('loginUsername').value);
+  const password=$('loginPassword').value;
+  const usernameHash=await sha256(username);
+  const passwordHash=await sha256(password);
+
+  if(usernameHash===ADMIN_USERNAME_HASH&&passwordHash===ADMIN_PASSWORD_HASH){
+    isAdmin=true;captainTeamId=null;
+    safeStorageSet('sessionStorage',ADMIN_SESSION,'1');
+    safeStorageRemove('sessionStorage',CAPTAIN_SESSION);
+    closeModal('loginModal');render();
+    if(cloud)subscribeCloud();
+    return;
   }
+
+  const matching=allCaptains().filter(x=>x.captain&&normalizeLogin(x.captain.lastName)===username);
+  if(matching.length===1&&passwordHash===data.settings.captainPasswordHash){
+    isAdmin=false;captainTeamId=matching[0].team.id;
+    safeStorageRemove('sessionStorage',ADMIN_SESSION);
+    safeStorageSet('sessionStorage',CAPTAIN_SESSION,captainTeamId);
+    closeModal('loginModal');render();activatePanel('mvp');
+    return;
+  }
+
+  $('loginError').textContent='Credenziali non corrette.';
 });
-$('pinInput').addEventListener('keydown',e => {if(e.key==='Enter')$('confirmLogin').click();});
+$('loginPassword').addEventListener('keydown',e => {if(e.key==='Enter')$('confirmLogin').click();});
 $('logoutBtn').addEventListener('click',() => {
-  isAdmin=false;safeStorageRemove('sessionStorage',ADMIN_SESSION);updateAccessUI();render();
+  isAdmin=false;captainTeamId=null;
+  safeStorageRemove('sessionStorage',ADMIN_SESSION);
+  safeStorageRemove('sessionStorage',CAPTAIN_SESSION);
+  render();
 });
 
 document.querySelectorAll('.tab').forEach(button => button.addEventListener('click',() => {
-  if (button.dataset.panel === 'settings' && !(MODE === 'admin' && isAdmin)) return;
+  if (button.dataset.panel === 'settings' && !isAdmin) return;
   document.querySelectorAll('.tab,.panel').forEach(x => x.classList.remove('on'));
   button.classList.add('on');$(button.dataset.panel).classList.add('on');
 }));
@@ -378,7 +409,7 @@ function renderTeams() {
   $('teamCards').innerHTML = data.teams.map((t,i) => `
     <div class="card c6 team-card" style="border-top-color:${colors[i%colors.length]}">
       <div class="team-head">
-        <div><h2>${esc(t.name)}</h2><span class="muted">${t.players.length} giocatori</span></div>
+        <div><h2>${esc(t.name)}</h2><span class="muted">${t.players.length} giocatori · ${t.captainId?'capitano configurato':'capitano da impostare'}</span></div>
         <div class="actions admin-only">
           <button class="secondary tiny" onclick="window.editTeamName('${t.id}')">Rinomina</button>
           <button class="primary tiny" onclick="window.openPlayer('${t.id}')">Aggiungi giocatore</button>
@@ -409,14 +440,26 @@ $('savePlayer').addEventListener('click',() => {
   if (!isAdmin) return;
   const t=team($('playerTeamId').value);
   const firstName=$('playerFirstName').value.trim(),lastName=$('playerLastName').value.trim();
+  const makeCaptain=$('playerCaptain').checked;
   if (!t || !firstName) return alert('Inserisci almeno il nome del giocatore.');
-  if ($('playerCaptain').checked && !lastName) return alert('Per il capitano è obbligatorio inserire il cognome, che sarà il nome utente.');
+  if (makeCaptain && !lastName) return alert('Per il capitano è obbligatorio inserire il cognome.');
   const id=$('playerId').value || uuid();
+  if(!makeCaptain&&t.captainId===id){
+    return alert('Ogni squadra deve avere un capitano. Imposta prima un altro giocatore come capitano.');
+  }
+  if(makeCaptain){
+    const key=normalizeLogin(lastName);
+    const duplicate=data.teams.some(other=>{
+      if(other.id===t.id)return false;
+      const captain=captainOfTeam(other.id);
+      return captain&&normalizeLogin(captain.lastName)===key;
+    });
+    if(duplicate)return alert('Esiste già un capitano con lo stesso cognome. Usa cognomi distinti per consentire il login.');
+  }
   const obj={id,number:$('playerNumber').value.trim(),firstName,lastName,name:[firstName,lastName].filter(Boolean).join(' ')};
   const index=t.players.findIndex(p=>p.id===id);
   if (index>=0) t.players[index]=obj; else t.players.push(obj);
-  if ($('playerCaptain').checked) t.captainId=id;
-  else if (t.captainId===id) t.captainId=null;
+  if (makeCaptain) t.captainId=id;
   t.players.forEach(p=>p.isCaptain=p.id===t.captainId);
   closeModal('playerModal');saveAll(true);
 });
@@ -527,28 +570,34 @@ function renderMvp() {
   const voted=Object.keys(data.votes || {}).filter(teamId=>Array.isArray(data.votes[teamId])&&data.votes[teamId].length===3&&captainOfTeam(teamId)).length;
   const closed=Boolean(data.settings.votingClosed);
 
-  $('voteProgress').innerHTML=`<p><b>${voted} squadre hanno espresso tutti e 3 i voti su ${configured} capitani configurati</b></p>
-    <p class="muted">${configured<5?'L’amministratore deve ancora indicare il capitano di '+(5-configured)+' squadre.':'Tutte le squadre hanno un capitano.'}</p>
-    ${closed?'<div class="vote-closed">Le votazioni sono chiuse. I capitani non possono più inserire o modificare i voti.</div>':''}`;
+  if(isAdmin){
+    $('voteProgress').innerHTML=`<p><b>${voted} squadre hanno completato il voto su ${configured} profili capitano attivi</b></p>
+      <p class="muted">${configured<data.teams.length?'Mancano '+(data.teams.length-configured)+' capitani da configurare.':'Ogni squadra ha il proprio capitano.'}</p>
+      ${closed?'<div class="vote-closed">Le votazioni sono chiuse.</div>':'<div class="login-status">Le votazioni sono aperte.</div>'}`;
+  }else{
+    $('voteProgress').innerHTML=closed
+      ? '<div class="vote-closed">Le votazioni sono chiuse.</div>'
+      : '<div class="login-status">Le votazioni sono aperte.</div>';
+  }
 
-  $('captainCredentials').innerHTML=isAdmin?`<h3>Credenziali e stato capitani</h3>
+  $('captainCredentials').innerHTML=isAdmin?`<h3>Stato profili capitani</h3>
     ${captains.map(x=>{
       const votes=Array.isArray(data.votes[x.team.id])?data.votes[x.team.id].length:0;
       return `<div class="teamline"><span><b>${esc(x.team.name)}</b><br><span class="muted">${x.captain?esc(playerFullName(x.captain)):'Capitano non impostato'}</span></span>
-      <span>${x.captain?`utente: <b>${esc(x.captain.lastName)}</b><br><span class="muted">${votes===3?'3 voti registrati':votes+' voti registrati'}</span>`:'—'}</span></div>`;
-    }).join('')}
-    <p class="muted">Password comune: <span class="password-note">12345</span></p>`:'';
+      <span>${x.captain?`<b>Profilo attivo</b><br><span class="muted">${votes===3?'Voto completato':'Voto non completato'}</span>`:'—'}</span></div>`;
+    }).join('')}`:'';
 
   if($('closeVotingBtn')){
     $('closeVotingBtn').style.display=isAdmin&&!closed?'inline-flex':'none';
     $('openVotingBtn').style.display=isAdmin&&closed?'inline-flex':'none';
+    $('printVoteResultsBtn').style.display=isAdmin?'inline-flex':'none';
   }
 
   $('captainLoginState').innerHTML=login
     ? `<div class="login-status">Accesso effettuato come <b>${esc(playerFullName(login.captain))}</b>, capitano di ${esc(login.team.name)}.</div>`
-    : '<p class="muted">Nessun capitano autenticato.</p>';
-  $('captainLoginBtn').style.display=login?'none':'inline-flex';
-  $('captainLogoutBtn').style.display=login?'inline-flex':'none';
+    : isAdmin
+      ? '<p class="muted">L’amministratore può controllare lo stato e l’esito della votazione.</p>'
+      : '<p class="muted">Per votare è necessario effettuare il login.</p>';
 
   if(login&&!closed){
     const selected=Array.isArray(data.votes[login.team.id])?data.votes[login.team.id]:[];
@@ -567,20 +616,17 @@ function renderMvp() {
     $('voteLockedMessage').style.display='block';
     $('voteLockedMessage').innerHTML=closed
       ? 'Le votazioni sono state chiuse dall’amministratore.'
-      : 'Accedi come capitano per esprimere i tuoi tre voti.';
+      : login?'Votazione non disponibile.':'Effettua il login per accedere alla scheda di voto.';
     $('voteBallot').style.display='none';$('voteActions').style.display='none';
   }
 
   const totals=voteTotals();
-  if(isAdmin){
-    $('voteResults').innerHTML=totals.length?totals.map((x,i)=>`<div class="vote-result">
-      <span class="vote-rank">${i+1}</span><span><b>${esc(playerFullName(x.player))}</b><br><span class="muted">${esc(data.teams.find(t=>t.players.some(p=>p.id===x.playerId))?.name||'')}</span></span>
-      <b>${x.votes} ${x.votes===1?'voto':'voti'}</b></div>`).join(''):'<p class="muted">Nessun voto ancora espresso.</p>';
-  }else{
-    $('voteResults').innerHTML='<p class="muted">L’esito della votazione è riservato agli amministratori.</p>';
-  }
+  $('voteResults').innerHTML=isAdmin
+    ? (totals.length?totals.map((x,i)=>`<div class="vote-result">
+        <span class="vote-rank">${i+1}</span><span><b>${esc(playerFullName(x.player))}</b><br><span class="muted">${esc(data.teams.find(t=>t.players.some(p=>p.id===x.playerId))?.name||'')}</span></span>
+        <b>${x.votes} ${x.votes===1?'voto':'voti'}</b></div>`).join(''):'<p class="muted">Nessun voto ancora espresso.</p>')
+    : '';
 }
-
 function updateVoteSelectionUI(){
   const checked=[...document.querySelectorAll('input[name="mvpVote"]:checked')];
   document.querySelectorAll('input[name="mvpVote"]').forEach(input=>{
@@ -591,24 +637,6 @@ function updateVoteSelectionUI(){
   if($('saveVoteBtn'))$('saveVoteBtn').disabled=checked.length!==3;
 }
 
-$('captainLoginBtn').addEventListener('click',()=>{
-  $('captainUsername').value='';$('captainPassword').value='';$('captainLoginError').textContent='';
-  showModal('captainLoginModal');setTimeout(()=>$('captainUsername').focus(),100);
-});
-$('confirmCaptainLogin').addEventListener('click',async()=>{
-  const username=normalizeLogin($('captainUsername').value);
-  const matching=allCaptains().filter(x=>x.captain&&normalizeLogin(x.captain.lastName)===username);
-  if(!username||matching.length===0){$('captainLoginError').textContent='Cognome non riconosciuto o capitano non ancora configurato.';return;}
-  if(matching.length>1){$('captainLoginError').textContent='Cognome presente per più capitani: chiedere all’amministratore di usare cognomi distinti.';return;}
-  if(await sha256($('captainPassword').value)!==data.settings.captainPasswordHash){$('captainLoginError').textContent='Password non corretta.';return;}
-  captainTeamId=matching[0].team.id;safeStorageSet('sessionStorage',CAPTAIN_SESSION,captainTeamId);
-  closeModal('captainLoginModal');render();
-});
-$('captainPassword').addEventListener('keydown',e=>{if(e.key==='Enter')$('confirmCaptainLogin').click();});
-document.addEventListener('change',e=>{if(e.target.matches('input[name="mvpVote"]'))updateVoteSelectionUI();});
-$('captainLogoutBtn').addEventListener('click',()=>{
-  captainTeamId=null;safeStorageRemove('sessionStorage',CAPTAIN_SESSION);render();
-});
 $('saveVoteBtn').addEventListener('click',()=>{
   const login=captainLoginState();if(!login)return;
   if(data.settings.votingClosed)return alert('Le votazioni sono chiuse.');
@@ -759,14 +787,6 @@ $('saveSettings').addEventListener('click',()=>{
   saveLocal();
   if(cloud&&oldCode!==data.settings.code)subscribeCloud();else saveAll(true);
 });
-$('changePin').addEventListener('click',async()=>{
-  if(!isAdmin)return;
-  const a=$('newPin').value,b=$('newPin2').value;
-  if(a.length<4)return alert('Il PIN deve contenere almeno 4 caratteri.');
-  if(a!==b)return alert('I PIN non coincidono.');
-  data.settings.adminPinHash=await sha256(a);$('newPin').value='';$('newPin2').value='';
-  saveAll(true);alert('PIN modificato.');
-});
 $('exportBtn').addEventListener('click',()=>{
   const link=document.createElement('a');
   link.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
@@ -792,5 +812,4 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
 }
 
 loadLocal();seedFinals();render();initCloud();
-if(MODE==='admin'&&!isAdmin)setTimeout(()=>$('loginBtn').click(),250);
 })();

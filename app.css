@@ -110,3 +110,7 @@ body.admin-enabled .vote-admin-only{display:block}
   body.print-mvp #mvp{display:block!important}
   body.print-mvp #mvp .c7,body.print-mvp #mvp .c12{grid-column:span 12}
 }
+
+body.captain-enabled .captain-session-only{display:block!important}
+.teamline{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid #e7edf2}
+#loginPassword{letter-spacing:normal;text-align:left;font-size:16px}
