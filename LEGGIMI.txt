@@ -1,0 +1,107 @@
+BEACH WATER POLO CUP - BAIA RUMBLE 2026
+DUE ACCESSI SEPARATI
+
+DOPO LA PUBBLICAZIONE:
+- VISITATORI: https://TUO-DOMINIO/index.html
+- AMMINISTRATORE: https://TUO-DOMINIO/admin.html
+
+PIN AMMINISTRATORE INIZIALE: 2026
+
+CALENDARIO UFFICIALE INSERITO
+SABATO 1 AGOSTO
+14:30 Partita giovani promesse Rari
+15:00 Baia Salata - Caricasa
+15:30 La Melaverde - La Sovversiva
+16:00 Baia Salata - Paradise Beach
+16:30 Lezione gratuita Acquagym
+17:00 La Melaverde - Caricasa
+17:30 La Sovversiva - Paradise Beach
+18:00 Baia Salata - La Melaverde
+
+DOMENICA 2 AGOSTO
+14:00 Caricasa - La Sovversiva
+14:30 La Melaverde - Paradise Beach
+15:00 Baia Salata - La Sovversiva
+15:30 Caricasa - Paradise Beach
+16:00 2ª contro 5ª
+16:30 3ª contro 4ª
+17:00 incontro tra le due vincenti
+17:30 finale contro la 1ª classificata
+18:00 premiazioni
+
+FUNZIONI
+- Visitatori in sola lettura.
+- Amministratore: modifica squadre, rose, calendario, eventi, risultati e gol individuali.
+- Risultato live calcolato dai gol dei giocatori.
+- Classifica del girone e classifica marcatori automatiche.
+- Fase finale compilata automaticamente.
+- Copertina e programma ufficiale inclusi.
+- Backup JSON.
+- Installazione PWA su PC e cellulare.
+
+SINCRONIZZAZIONE
+Per vedere su tutti i dispositivi le modifiche dell'amministratore:
+1. Creare un progetto Firebase.
+2. Attivare Firestore.
+3. Creare una Web App.
+4. Copiare i dati nel file config.js.
+5. Pubblicare tutta la cartella su hosting HTTPS.
+
+REGOLE FIRESTORE DI SOLA PROVA
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /tournaments/{tournamentId} {
+      allow read, write: if true;
+    }
+  }
+}
+
+ATTENZIONE
+Il doppio link e il PIN proteggono l'interfaccia. Per una protezione tecnica reale
+delle scritture online occorre Firebase Authentication con regole Firestore dedicate.
+
+
+CAPITANI E VOTAZIONE MIGLIOR GIOCATORE
+- Ogni squadra deve avere un capitano, scelto dall'amministratore nella scheda del giocatore.
+- Il nome utente del capitano è il suo cognome.
+- Password comune per tutti i capitani: 12345.
+- Ogni capitano esprime un solo voto complessivo e può modificarlo.
+- Tutti i giocatori sono mostrati nella scheda di voto, divisi per squadra.
+- L'amministratore vede in ogni momento il conteggio.
+- I capitani vedono il risultato complessivo quando hanno votato tutti e cinque.
+
+NOTA SICUREZZA
+Per impedire tecnicamente voti o scritture non autorizzate sul database pubblico è necessario
+usare Firebase Authentication e regole Firestore. Il login presente nell'app protegge
+l'interfaccia e identifica il capitano, ma le regole Firestore di prova restano aperte.
+
+
+REGOLE MVP AGGIORNATE
+- Ogni capitano deve esprimere esattamente 3 voti.
+- I voti devono andare a 3 giocatori diversi.
+- La squadra del capitano non compare nella scheda di voto.
+- Non è possibile votare alcun componente della propria squadra.
+- Ogni capitano può modificare i propri tre voti finché le votazioni sono aperte.
+- Solo gli amministratori vedono conteggi, graduatoria e vincitore.
+- Capitani e visitatori non vedono mai l'esito.
+- L'amministratore può chiudere o riaprire le votazioni e stampare l'esito MVP.
+
+
+VERSIONE CORRETTA – CONTROLLO PULSANTI
+Sono stati corretti:
+- blocco completo dello script quando localStorage o sessionStorage non sono disponibili;
+- login amministratore su file HTML aperto direttamente da iPhone/PC;
+- login capitani con password 12345 anche senza Web Crypto;
+- apertura e chiusura delle finestre;
+- navigazione tra tutte le sezioni;
+- inserimento e modifica giocatori e capitani;
+- gestione risultati live;
+- selezione dei tre voti MVP;
+- chiusura e riapertura delle votazioni;
+- registrazione della PWA quando pubblicata online.
+
+NOTA
+I due file HTML autonomi funzionano separatamente sul dispositivo.
+Per condividere dati in tempo reale tra amministratore e visitatori occorre pubblicare
+il pacchetto Cloud e configurare Firebase nel file config.js.
